@@ -1,3 +1,0 @@
-f052e29 | 2025-08-11 15:44:46 +0900 | YoonHyunsoo | chore: apply latest edits
-b58c33f | 2025-08-10 13:27:39 +0900 | YoonHyunsoo | chore: security: stop tracking .env
-04c8fbc | 2025-08-10 13:25:37 +0900 | YoonHyunsoo | chore: deploy: add vercel.json and prepare for Vercel
