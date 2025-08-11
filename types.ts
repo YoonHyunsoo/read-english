@@ -26,6 +26,9 @@ export interface VocabItem {
   meaningKor: string;
   meaningEng: string;
   sentence?: string;
+  sentenceEngHighlight?: string;
+  sentenceKor?: string;
+  sentenceKorHighlight?: string;
 }
 
 
@@ -58,9 +61,12 @@ export interface Day {
 
 // Universal types that are still in use
 export interface Question {
-  word: string; // Korean word or Question text
-  options: string[]; // English options
-  correctAnswer: string; // Correct English translation
+  word: string; // Prompt text (can be Korean meaning, English word, cloze sentence, or English meaning)
+  options: string[]; // Choice strings as displayed
+  correctAnswer: string; // Must match one of options exactly
+  targetEnglishWord?: string; // Always the underlying English vocab word for this question
+  promptType?: 'kor->eng' | 'eng->kor' | 'cloze' | 'engMeaning';
+  metaOptions?: Record<string, { english: string; korean: string; pos?: string; posAbbr?: string }>;
   explanation?: string;
 }
 

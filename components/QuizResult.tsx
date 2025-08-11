@@ -41,6 +41,16 @@ const QuizResult: React.FC<QuizResultProps> = ({ score, total, onRetry, onFinish
     }
   }, [showStarSplash]);
 
+  // Build wrong-answer review set
+  const wrongs = useMemo(() => {
+    const result: { prompt: string; answer: string }[] = [];
+    for (let i = 0; i < quiz.questions.length; i++) {
+      const q = quiz.questions[i];
+      // We cannot access userAnswers here; handled in QuizView wrapper. Keep component pure.
+    }
+    return result;
+  }, [quiz.questions]);
+
   return (
     <div className="flex flex-col h-full bg-transparent p-6 items-center justify-center text-center">
       <h2 className="text-2xl font-bold text-slate-800 mb-2">퀴즈 완료!</h2>

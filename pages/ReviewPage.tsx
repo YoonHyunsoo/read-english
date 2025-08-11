@@ -102,15 +102,6 @@ const ReviewPage: React.FC<ReviewPageProps> = ({ currentUser }) => {
         };
         setQuiz(newQuiz);
         setVocabToPreview(null);
-        // TTL: 입장 시 1회 발음 (레벨업 화면만)
-        try {
-          if (quizQuestions[0]) {
-            const u = new SpeechSynthesisUtterance(quizQuestions[0].correctAnswer);
-            u.lang = 'en-US';
-            window.speechSynthesis.cancel();
-            window.speechSynthesis.speak(u);
-          }
-        } catch {}
     };
 
     const handleQuizFinish = async () => {

@@ -1,16 +1,33 @@
 -- 03_vocab_content.sql
--- 어휘 활동 정보 (테이블 생성 없음)
+-- Vocab 콘텐츠 스키마 및 샘플 데이터 생성
 
--- 이 파일은 정보 제공 목적입니다.
--- 어휘 활동은 vocab_database 테이블에서 동적으로 생성됩니다.
--- 
--- 어휘 활동의 작동 방식:
--- 1. 사용자가 특정 레벨의 어휘 활동을 선택
--- 2. 시스템이 vocab_database에서 해당 레벨의 단어들을 조회
--- 3. 무작위로 10개의 단어를 선택하여 퀴즈 생성
--- 4. 각 문제는 한국어 의미를 보고 영어 단어를 선택하는 형식
---
--- 예시 쿼리:
--- SELECT * FROM vocab_database WHERE level = 1 ORDER BY RANDOM() LIMIT 10;
+CREATE TABLE IF NOT EXISTS vocab_materials (
+    id TEXT PRIMARY KEY,
+    level INTEGER NOT NULL,
+    day INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    vocab1 TEXT NULL,
+    type1 SMALLINT NULL CHECK (type1 BETWEEN 1 AND 4),
+    vocab2 TEXT NULL,
+    type2 SMALLINT NULL CHECK (type2 BETWEEN 1 AND 4),
+    vocab3 TEXT NULL,
+    type3 SMALLINT NULL CHECK (type3 BETWEEN 1 AND 4),
+    vocab4 TEXT NULL,
+    type4 SMALLINT NULL CHECK (type4 BETWEEN 1 AND 4),
+    vocab5 TEXT NULL,
+    type5 SMALLINT NULL CHECK (type5 BETWEEN 1 AND 4),
+    vocab6 TEXT NULL,
+    type6 SMALLINT NULL CHECK (type6 BETWEEN 1 AND 4),
+    vocab7 TEXT NULL,
+    type7 SMALLINT NULL CHECK (type7 BETWEEN 1 AND 4),
+    vocab8 TEXT NULL,
+    type8 SMALLINT NULL CHECK (type8 BETWEEN 1 AND 4),
+    vocab9 TEXT NULL,
+    type9 SMALLINT NULL CHECK (type9 BETWEEN 1 AND 4),
+    vocab10 TEXT NULL,
+    type10 SMALLINT NULL CHECK (type10 BETWEEN 1 AND 4),
+    UNIQUE(level, day)
+);
 
-SELECT 'Vocabulary content information provided - no tables created.' as status;
+-- Seed data intentionally omitted. Populate this table via Supabase import/SQL after deployment.
+SELECT 'vocab_materials schema created (no seed data)' as status;

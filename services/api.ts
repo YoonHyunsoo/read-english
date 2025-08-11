@@ -162,6 +162,9 @@ const mapVocabItemFromDb = (v: Database['public']['Tables']['vocab_database']['R
   meaningKor: v.meaning_kor,
   meaningEng: v.meaning_eng,
   sentence: v.sentence || undefined,
+  sentenceEngHighlight: (v as any).sentence_eng_highlight || undefined,
+  sentenceKor: (v as any).sentence_kor || undefined,
+  sentenceKorHighlight: (v as any).sentence_kor_highlight || undefined,
 });
 
 
@@ -630,31 +633,25 @@ export async function getAllMaterialsForType(type: Exclude<ActivityType, 'empty'
     const supabase = getSupabaseClient();
     
     if (type === 'vocab') {
-        const { data, error } = await supabase.from('vocab_database').select('*').order('level');
-        if (error) { console.error(error); return []; }
+        // Build materials list from vocab_materials table (only the sets that actually exist)
+        const { data, error } = await supabase
+          .from('vocab_materials')
+          .select('id, level, day, title')
+          .order('level')
+          .order('day');
+        if (error) { console.error('getAllMaterialsForType(vocab) failed', error); return []; }
 
-        const groupedByLevel = new Map<number, any[]>();
-        (data || []).forEach(item => {
-            if (!groupedByLevel.has(item.level)) {
-                groupedByLevel.set(item.level, []);
-            }
-            groupedByLevel.get(item.level)!.push(item);
+        const groupedByLevel = new Map<number, { id: string; title: string; day: number }[]>();
+        (data || []).forEach((row: any) => {
+          if (!groupedByLevel.has(row.level)) groupedByLevel.set(row.level, []);
+          groupedByLevel.get(row.level)!.push({ id: row.id as string, title: row.title as string, day: row.day as number });
         });
-        
-        const result: Level[] = [];
-        for (const [level, words] of groupedByLevel.entries()) {
-            if (words.length < 1) continue;
 
-            const allWordsInLevel = words.map(w => w.word);
-            const questions = words.map(word => ({
-                id: word.vocab_id,
-                text: word.meaning_kor,
-                options: generateOptions(word.word, allWordsInLevel),
-                answer: word.word,
-            }));
-            result.push({ level, questions });
-        }
-        return result;
+        return Array.from(groupedByLevel.entries()).map(([level, items]) => ({
+          level,
+          // Represent each set as a placeholder question so the UI can render a row per set
+          questions: items.map(it => ({ id: it.id, text: it.title || `Vocab Day ${it.day}`, options: [], answer: '' }))
+        }));
     }
 
     if (type === 'grammar') {
@@ -676,6 +673,25 @@ export async function getAllMaterialsForType(type: Exclude<ActivityType, 'empty'
     return [];
 }
 
+// --- Vocab materials preview ---
+export async function getVocabMaterialPreview(setId: string): Promise<{ total: number; items: { word: string; type: 1|2|3|4; pos?: string; meaningKor?: string; }[] }>{
+  const supabase = getSupabaseClient();
+  const { data: mats, error } = await supabase.from('vocab_materials').select('*').eq('id', setId).limit(1);
+  if (error || !mats || mats.length === 0) return { total: 0, items: [] };
+  const mat: any = mats[0];
+  const raw = Array.from({ length: 10 }, (_, i) => ({ word: mat[`vocab${i+1}`] as string | null, type: mat[`type${i+1}`] as number | null }))
+    .filter(e => typeof e.word === 'string' && (e.word as string).trim().length > 0 && [1,2,3,4].includes(Number(e.type)) )
+    .map(e => ({ word: (e.word as string).trim(), type: Number(e.type) as 1|2|3|4 }));
+  if (raw.length === 0) return { total: 0, items: [] };
+  const { data: rows } = await supabase.from('vocab_database').select('word, part_of_speech, meaning_kor').in('word', raw.map(r=>r.word));
+  const dict = new Map((rows||[]).map(r => [String((r as any).word).toLowerCase(), r]));
+  const items = raw.map(r => {
+    const d = dict.get(r.word.toLowerCase());
+    return { word: r.word, type: r.type, pos: d ? (d as any).part_of_speech : undefined, meaningKor: d ? (d as any).meaning_kor : undefined };
+  });
+  return { total: items.length, items };
+}
+
 export async function getAllReadingMaterials(): Promise<ReadingMaterial[]> {
     const { data, error } = await getSupabaseClient().from('reading_materials').select('*').order('level').order('day');
     if (error) { console.error(error); return []; }
@@ -686,6 +702,24 @@ export async function getAllListeningMaterials(): Promise<ListeningMaterial[]> {
     const { data, error } = await getSupabaseClient().from('listening_materials').select('*').order('level').order('day');
     if (error) { console.error(error); return []; }
     return Promise.all((data || []).map(dbUnit => mapListeningMaterialFromDb(dbUnit)));
+}
+
+// --- Word DB ---
+export async function getAllVocabWords(): Promise<{ level: number; words: VocabItem[] }[]> {
+  const { data, error } = await getSupabaseClient()
+    .from('vocab_database')
+    .select('*')
+    .order('level')
+    .order('word')
+    .order('word_no');
+  if (error) { console.error('getAllVocabWords failed', error); return []; }
+  const grouped = new Map<number, VocabItem[]>();
+  (data || []).forEach(row => {
+    const item = mapVocabItemFromDb(row as any);
+    if (!grouped.has(item.level)) grouped.set(item.level, []);
+    grouped.get(item.level)!.push(item);
+  });
+  return Array.from(grouped.entries()).map(([level, words]) => ({ level, words }));
 }
 
 
@@ -730,25 +764,167 @@ export async function getSelfStudyQuizForStudent(student: User): Promise<Quiz | 
     const vocabItems = await getSelfStudyVocabSet(student);
     if (vocabItems.length === 0) return null;
 
-    const levelWordsAll = (await getSupabaseClient().from('vocab_database').select('word').eq('level', student.vocabLevel)).data?.map(w => w.word) || [];
+    const supa = getSupabaseClient();
+    const levelRowsFull = (await supa.from('vocab_database').select('word, meaning_kor, part_of_speech').eq('level', student.vocabLevel)).data || [] as any[];
+    const levelDict = new Map(levelRowsFull.map(r => [String((r as any).word).toLowerCase(), r]));
+    const levelDictByKor = new Map(levelRowsFull.map(r => [String((r as any).meaning_kor), r]));
+    const levelWordsAll = levelRowsFull.map(r => (r as any).word) || [];
     const buildOptions = (answer: string) => generateOptions(answer, levelWordsAll);
 
-    const selectedQuestions = vocabItems.map(item => ({
-      id: item.vocabId,
-      text: item.meaningKor,
-      options: buildOptions(item.word),
-      answer: item.word,
+    // Build heterogeneous question types (4 kinds) with level-based probability
+    const pickType = (level: number): 1|2|3|4 => {
+      const r = Math.random();
+      if (level <= 2) {
+        // 1:50%, 2:50%
+        return r < 0.5 ? 1 : 2;
+      } else if (level <= 5) {
+        // 1:40%, 2:40%, 3:20%
+        if (r < 0.4) return 1; if (r < 0.8) return 2; return 3;
+      } else {
+        // 1:25%, 2:25%, 3:25%, 4:25%
+        if (r < 0.25) return 1; if (r < 0.5) return 2; if (r < 0.75) return 3; return 4;
+      }
+    };
+
+    const selectedQuestions = await Promise.all(vocabItems.map(async (item) => {
+      const typeIndex = pickType(item.level);
+      if (typeIndex === 0) {
+        // (1) 한국어 뜻 -> 영어 단어 선택
+        return {
+          id: item.vocabId,
+          text: item.meaningKor,
+          options: buildOptions(item.word),
+          answer: item.word,
+        };
+      } else if (typeIndex === 2) {
+        // (2) 영어 단어 -> 한국어 뜻 선택
+        const korOptionsSource = (await getSupabaseClient()
+          .from('vocab_database')
+          .select('meaning_kor, word')
+          .eq('level', item.level)).data || [] as any[];
+        const allKor = korOptionsSource.map(r => (r as any).meaning_kor);
+        const distractors = allKor.filter(k => k !== item.meaningKor).sort(() => 0.5 - Math.random()).slice(0, 3);
+        const options = Array.from(new Set([item.meaningKor, ...distractors])).sort(() => 0.5 - Math.random());
+        return {
+          id: item.vocabId,
+          text: item.word,
+          options,
+          answer: item.meaningKor,
+        };
+      } else if (typeIndex === 3) {
+        // (3) 영어 예문(cloze) -> 영어 단어 선택
+        const cloze = (item.sentence || '').replace(new RegExp(item.word, 'i'), '____');
+        return {
+          id: item.vocabId,
+          text: cloze || `____`,
+          options: buildOptions(item.word),
+          answer: item.word,
+        };
+      } else {
+        // (4) 영어 뜻(meaning_eng) -> 영어 단어 선택
+        return {
+          id: item.vocabId,
+          text: item.meaningEng,
+          options: buildOptions(item.word),
+          answer: item.word,
+        };
+      }
     }));
 
     return {
         activityId: `self-study-vocab-level-${student.vocabLevel}`,
         title: `레벨업 어휘 - Level ${student.vocabLevel}`,
         activityType: 'vocab',
-        questions: selectedQuestions.map(q => ({ word: q.text, options: q.options, correctAnswer: q.answer }))
+        questions: selectedQuestions.map(q => {
+          const v = vocabItems.find(vv=>vv.vocabId===q.id);
+          const meta: Record<string, {english:string; korean:string; pos?: string; posAbbr?: string}> = {};
+          if (v) {
+            // For each option, attach english/korean meaning best-effort
+            (q.options as string[]).forEach(opt => {
+              if (!meta[opt]) {
+                if (q.text === v.meaningKor || q.text === '____' || q.text === v.meaningEng) {
+                  // options are english words
+                  const dictRow = levelDict.get(opt.toLowerCase());
+                  meta[opt] = { english: opt, korean: dictRow ? (dictRow as any).meaning_kor : '', pos: dictRow ? (dictRow as any).part_of_speech : undefined, posAbbr: undefined };
+                } else if (q.text === v.word) {
+                  // options are korean meanings
+                  const dictRow = levelDictByKor.get(opt);
+                  meta[opt] = { english: dictRow ? (dictRow as any).word : v.word, korean: opt, pos: dictRow ? (dictRow as any).part_of_speech : (levelDict.get(String(v.word).toLowerCase()) as any)?.part_of_speech, posAbbr: undefined };
+                } else {
+                  meta[opt] = { english: opt, korean: '' };
+                }
+              }
+            });
+          }
+          return ({
+            word: q.text,
+            options: q.options as string[],
+            correctAnswer: q.answer as string,
+            targetEnglishWord: v?.word,
+            promptType: (/____/.test(q.text) ? 'cloze' : (q.text === v?.word ? 'eng->kor' : (q.text === v?.meaningEng ? 'engMeaning' : 'kor->eng'))),
+            metaOptions: meta,
+          });
+        })
     };
 }
 
 export async function getQuizForActivity(activity: Activity, classId?: string): Promise<Quiz> {
+    if (activity.type === 'vocab') {
+      // If vocab_materials exists for this level/day pair, build quiz from it
+      const supabase = getSupabaseClient();
+      const dayNumber = activity.id.startsWith('day-') ? parseInt(activity.id.split('-')[1]) : 1;
+      const { data: mats } = await supabase.from('vocab_materials').select('*').eq('level', activity.level).eq('day', dayNumber).limit(1);
+      if (mats && mats.length > 0) {
+        const mat: any = mats[0];
+        const entries = Array.from({ length: 10 }, (_, i) => ({ wordKey: mat[`vocab${i+1}`] as string | null, type: mat[`type${i+1}`] as number | null }))
+          .filter(e => typeof e.wordKey === 'string' && (e.wordKey as string).trim().length > 0 && [1,2,3,4].includes(Number(e.type)) )
+          .map(e => ({ wordKey: (e.wordKey as string).trim(), type: Number(e.type) as 1|2|3|4 }));
+        if (entries.length === 0) {
+          return { activityId: activity.id, title: `Vocab - Level ${activity.level}`, activityType: 'vocab', questions: [] } as any;
+        }
+        // Fetch vocab details for all words in set
+        const { data: rows } = await supabase.from('vocab_database').select('*').in('word', entries.map(e => e.wordKey));
+        const dict = new Map((rows||[]).map(r => [r.word.toLowerCase(), r]));
+        const allWords = (rows||[]).map(r => r.word);
+        const buildEngOptions = (answer: string) => generateOptions(answer, allWords);
+        const questions = entries.map((e) => {
+          const v = dict.get(e.wordKey.toLowerCase());
+          if (!v) return null;
+          switch(e.type){
+            case 1: return { word: v.meaning_kor, options: buildEngOptions(v.word), correctAnswer: v.word, promptType: 'kor->eng' };
+            case 2: {
+              const korAll = (rows||[]).map(r=>r.meaning_kor);
+              const distractors = korAll.filter(k=>k!==v.meaning_kor).sort(()=>0.5-Math.random()).slice(0,3);
+              const opts = Array.from(new Set([v.meaning_kor, ...distractors])).sort(()=>0.5-Math.random());
+              return { word: v.word, options: opts, correctAnswer: v.meaning_kor, promptType: 'eng->kor' };
+            }
+            case 3: {
+              const cloze = (v.sentence || '').replace(new RegExp(v.word,'i'),'____');
+              return { word: cloze || '____', options: buildEngOptions(v.word), correctAnswer: v.word, promptType: 'cloze' };
+            }
+            case 4: return { word: v.meaning_eng, options: buildEngOptions(v.word), correctAnswer: v.word, promptType: 'engMeaning' };
+            default: return null;
+          }
+        }).filter(Boolean) as any[];
+        // attach meta for explanation
+        const byWord = new Map((rows||[]).map(r => [String(r.word).toLowerCase(), r]));
+        const byKor = new Map((rows||[]).map(r => [String(r.meaning_kor), r]));
+        const withMeta = questions.map(q => {
+          const meta: Record<string, { english: string; korean: string; pos?: string; posAbbr?: string }> = {};
+          (q.options as string[]).forEach(opt => {
+            if (q.promptType === 'eng->kor') {
+              const row = byKor.get(opt);
+              meta[opt] = { english: row ? (row as any).word : (q as any).correctAnswer, korean: opt, pos: row ? (row as any).part_of_speech : undefined };
+            } else {
+              const row = byWord.get(opt.toLowerCase());
+              meta[opt] = { english: opt, korean: row ? (row as any).meaning_kor : '', pos: row ? (row as any).part_of_speech : undefined };
+            }
+          });
+          return { ...q, metaOptions: meta };
+        });
+        return { activityId: activity.id, title: `Vocab - Level ${activity.level}`, activityType: 'vocab', questions: withMeta };
+      }
+    }
     const allQuestions = await getMaterialQuestions(activity.type, activity.level);
     
     let questionsForQuiz: LeveledQuestion[] = [];
@@ -860,9 +1036,32 @@ export async function getVocabForActivity(activity: Activity, classId: string): 
         return material.vocabItems;
     }
     if (activity.type === 'vocab') {
-        const { data, error } = await supabase.from('vocab_database').select('*').eq('level', activity.level);
-        if (error) return [];
-        return (data || []).map(mapVocabItemFromDb);
+        try {
+          // If this is a class-based day activity, use vocab_materials to scope the set
+          if (classId && activity.id.startsWith('day-')) {
+            const dayNumber = parseInt(activity.id.split('-')[1]);
+            const { data: mats } = await supabase
+              .from('vocab_materials')
+              .select('*')
+              .eq('level', activity.level)
+              .eq('day', dayNumber)
+              .limit(1);
+            if (mats && mats.length > 0) {
+              const mat: any = mats[0];
+              const entries = Array.from({ length: 10 }, (_, i) => String(mat[`vocab${i+1}`] || '').trim())
+                .filter(w => w.length > 0);
+              if (entries.length === 0) return [];
+              const { data: rows } = await supabase.from('vocab_database').select('*').in('word', entries);
+              return (rows || []).map(mapVocabItemFromDb);
+            }
+          }
+          // Fallback: whole level (self-study or if materials missing)
+          const { data, error } = await supabase.from('vocab_database').select('*').eq('level', activity.level);
+          if (error) return [];
+          return (data || []).map(mapVocabItemFromDb);
+        } catch {
+          return [];
+        }
     }
     return [];
 }

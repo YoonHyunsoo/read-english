@@ -5,6 +5,8 @@ import { PlusIcon, CloseIcon, ChevronDownIcon, ChevronUpIcon, VocabIcon, Listeni
 import ActivityStatusModal from '../components/ActivityStatusModal';
 import ModifyActivityChoiceModal from '../components/ModifyActivityChoiceModal';
 import SelectMaterialModal from '../components/SelectMaterialModal';
+import StudentsPage from './StudentsPage';
+import CurriculumSetupPage from './CurriculumSetupPage';
 import QuestionDetailModal from '../components/QuestionDetailModal';
 import ReadingMaterialDetailModal from '../components/ReadingMaterialDetailModal';
 import FooterNav from '../components/FooterNav';
@@ -20,8 +22,6 @@ const gradeOptions = [
 
 interface ClassesPageProps {
   teacher: User;
-  onManageCurriculum: (classId: string) => void;
-  onManageStudents: (classId: string) => void;
   onEnterClassSession?: (classId: string, dayId: number) => void;
 }
 
@@ -144,7 +144,7 @@ const ClassCard: React.FC<{
   onManageStudents: (classId: string) => void;
   onClassUpdated: () => void;
   onEnterClassSession?: (classId: string, dayId: number) => void;
-}> = ({ classInfo, onManageCurriculum, onManageStudents, onClassUpdated, onEnterClassSession }) => {
+}> = ({ classInfo, onClassUpdated, onEnterClassSession }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [days, setDays] = useState<Day[]>([]);
   const [startedDays, setStartedDays] = useState<Set<number>>(new Set());
@@ -164,6 +164,17 @@ const ClassCard: React.FC<{
   const [modifyingContent, setModifyingContent] = useState<{ day: Day; content: DayActivityContentForTeacher } | null>(null);
   const [showModifyChoice, setShowModifyChoice] = useState(false);
   const [showSelectMaterial, setShowSelectMaterial] = useState<'single' | 'sequential' | null>(null);
+  const [openActivityIds, setOpenActivityIds] = useState<Set<string>>(new Set());
+  const [isCurriculumModalOpen, setIsCurriculumModalOpen] = useState(false);
+  const [isStudentsModalOpen, setIsStudentsModalOpen] = useState(false);
+
+  const toggleActivityOpen = (activityId: string) => {
+    setOpenActivityIds(prev => {
+      const next = new Set(prev);
+      if (next.has(activityId)) next.delete(activityId); else next.add(activityId);
+      return next;
+    });
+  };
 
   const fetchCurriculumData = async () => {
     setIsLoading(true);
@@ -365,10 +376,10 @@ const ClassCard: React.FC<{
 
         {/* Card Footer */}
         <div className="pt-3 border-t border-gray-200 flex gap-3">
-            <button onClick={() => onManageCurriculum(classInfo.id)} className="flex-1 bg-blue-100 text-blue-700 font-semibold py-2 px-4 rounded-lg hover:bg-blue-200 transition-colors text-sm">
+            <button onClick={() => setIsCurriculumModalOpen(true)} className="flex-1 bg-blue-100 text-blue-700 font-semibold py-2 px-4 rounded-lg hover:bg-blue-200 transition-colors text-sm">
                 커리큘럼 관리
             </button>
-            <button onClick={() => onManageStudents(classInfo.id)} className="flex-1 bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors text-sm">
+            <button onClick={() => setIsStudentsModalOpen(true)} className="flex-1 bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors text-sm">
                 학생 관리
             </button>
         </div>
@@ -386,26 +397,36 @@ const ClassCard: React.FC<{
               ) : days.length > 0 ? (
                 days.map(day => (
                   <div key={day.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                    <div className="flex justify-between items-center w-full">
+                    <div className="flex justify-between items-center w-full cursor-pointer" onClick={() => handleDayToggle(day)}>
                         <span className="font-semibold text-slate-700">{day.title}</span>
                         <div className="flex items-center gap-2">
                             <button 
-                                onClick={() => handleStartDayToggle(day.id)}
+                                onClick={(e) => { e.stopPropagation();
+                                  if (startedDays.has(day.id)) {
+                                    if (window.confirm('수업을 마감할까요? 학생들이 더 이상 학습을 진행하지 못합니다.')) {
+                                      handleStartDayToggle(day.id);
+                                    }
+                                  } else {
+                                    if (window.confirm('수업을 시작할까요? 학생들이 학습을 진행할 수 있게 됩니다.')) {
+                                      handleStartDayToggle(day.id);
+                                    }
+                                  }
+                                }}
                                 className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors ${
                                     startedDays.has(day.id) 
                                     ? 'bg-green-200 text-green-800 hover:bg-green-300' 
                                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                 }`}
                             >
-                                {startedDays.has(day.id) ? '수업 마감' : '수업 시작'}
+                                {startedDays.has(day.id) ? '수업 중' : '수업 전'}
                             </button>
                             <button 
-                                onClick={() => handleEnterSession(day)}
+                                onClick={(e) => { e.stopPropagation(); handleEnterSession(day); }}
                                 className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors bg-blue-100 text-blue-700 hover:bg-blue-200`}
                             >
                                 입장하기
                             </button>
-                            <button onClick={() => handleDayToggle(day)} className="p-1 rounded-full text-slate-700 hover:bg-gray-200">
+                            <button onClick={(e) => { e.stopPropagation(); handleDayToggle(day); }} className="p-1 rounded-full text-slate-700 hover:bg-gray-200">
                                 <div className="w-5 h-5">{expandedDayId === day.id ? <ChevronUpIcon /> : <ChevronDownIcon />}</div>
                             </button>
                         </div>
@@ -425,55 +446,81 @@ const ClassCard: React.FC<{
                                 if (isUnit(content)) {
                                   const unit = content;
                                   return (
-                                    <div key={activity.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
-                                      <div className="flex justify-between items-start mb-2">
+                                    <>
+                                      <div key={activity.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm cursor-pointer" onClick={() => toggleActivityOpen(activity.id)}>
+                                        <div className="flex justify-between items-start mb-1">
                                         <h4 className="font-bold text-sm text-slate-700 flex items-center gap-2">
                                           <span className="text-xs font-medium px-2 py-0.5 rounded-md" style={getActivityLevelStyles(activity.type, activity.level)}>
                                             Lv. {activity.level}
                                           </span>
                                           <span>{`${activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}`}</span>
                                         </h4>
-                                      </div>
-                                      <div className="flex justify-between items-center">
-                                        <div className="flex items-center gap-2 flex-grow overflow-hidden">
-                                          <div className="w-5 h-5 text-slate-600 flex-shrink-0 ml-1">{iconMap[activity.type]}</div>
-                                          <span className="font-medium text-sm truncate flex-shrink">{`${day.id}차시: ${unit.title}`}</span>
                                         </div>
-                                        <div className="flex gap-2 flex-shrink-0 ml-2">
-                                          <button onClick={() => setViewingReadingMaterial(unit as ReadingMaterial)} className="text-xs font-semibold bg-gray-200 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-300">보기</button>
-                                          <button onClick={() => setViewingStatus({ activityId: activity.id, activityTitle: `${day.title}: ${unit.title}`, classId: classInfo.id })} className="text-xs font-semibold bg-blue-200 text-blue-800 px-3 py-1.5 rounded-md hover:bg-blue-300">현황</button>
+                                        <div className="flex justify-between items-center">
+                                          <div className="flex items-center gap-2 flex-grow overflow-hidden">
+                                            <div className="w-5 h-5 text-slate-600 flex-shrink-0 ml-1">{iconMap[activity.type]}</div>
+                                            <span className="font-medium text-sm truncate flex-shrink">{`${day.id}차시: ${unit.title}`}</span>
+                                          </div>
+                                          <div className="flex gap-2 flex-shrink-0 ml-2 items-center">
+                                            <button onClick={(e) => { e.stopPropagation(); setViewingStatus({ activityId: activity.id, activityTitle: `${day.title}: ${unit.title}`, classId: classInfo.id }); }} className="text-xs font-semibold bg-blue-200 text-blue-800 px-3 py-1.5 rounded-md hover:bg-blue-300">현황</button>
+                                            <span className={`inline-block transition-transform ${openActivityIds.has(activity.id) ? 'rotate-180' : ''}`}>▼</span>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
+                                      {openActivityIds.has(activity.id) && (
+                                        <div className="mt-2 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner">
+                                          <div className="text-sm text-slate-700 whitespace-pre-wrap">
+                                            {unit.activityType === 'reading' ? unit.passage : (unit as ListeningMaterial).script}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
                                   );
                                 }
                                 
                                 if (isQuestion(content)) {
                                   const question = content;
                                   return (
-                                    <div key={activity.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
-                                      <div className="flex justify-between items-start mb-2">
+                                    <>
+                                      <div key={activity.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm cursor-pointer" onClick={() => toggleActivityOpen(activity.id)}>
+                                        <div className="flex justify-between items-start mb-1">
                                         <h4 className="font-bold text-sm text-slate-700 flex items-center gap-2">
                                           <span className="text-xs font-medium px-2 py-0.5 rounded-md" style={getActivityLevelStyles(activity.type, activity.level)}>
                                             Lv. {activity.level}
                                           </span>
                                           <span>{`${activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}`}</span>
                                         </h4>
-                                        <button onClick={() => handleModifyClick(day, contentItem)} className="text-xs text-blue-600 hover:underline font-semibold">
-                                          수정
-                                        </button>
-                                      </div>
-                                      <div className="flex justify-between items-center">
-                                        <div className="flex items-center gap-2 flex-grow overflow-hidden">
-                                          <div className="w-5 h-5 text-slate-600 flex-shrink-0 ml-1">{iconMap[activity.type]}</div>
-                                          <span className="font-medium text-sm truncate flex-shrink">{`${day.id}차시: ${question.text}`}</span>
+                                          <button onClick={(e) => { e.stopPropagation(); handleModifyClick(day, contentItem); }} className="text-xs text-blue-600 hover:underline font-semibold">
+                                            수정
+                                          </button>
                                         </div>
-                                        <div className="flex gap-2 flex-shrink-0 ml-2">
-                                          <button onClick={() => setViewingQuestion({ question, level: activity.level, index: day.id -1 })} className="text-xs font-semibold bg-gray-200 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-300">보기</button>
-                                          <button onClick={() => setViewingStatus({ activityId: activity.id, activityTitle: `${day.title}: ${activity.type} L${activity.level}`, classId: classInfo.id })} className="text-xs font-semibold bg-blue-200 text-blue-800 px-3 py-1.5 rounded-md hover:bg-blue-300">현황</button>
+                                        <div className="flex justify-between items-center">
+                                          <div className="flex items-center gap-2 flex-grow overflow-hidden">
+                                            <div className="w-5 h-5 text-slate-600 flex-shrink-0 ml-1">{iconMap[activity.type]}</div>
+                                            <span className="font-medium text-sm truncate flex-shrink">{`${day.id}차시: ${question.text}`}</span>
+                                          </div>
+                                          <div className="flex gap-2 flex-shrink-0 ml-2 items-center">
+                                            <button onClick={(e) => { e.stopPropagation(); setViewingStatus({ activityId: activity.id, activityTitle: `${day.title}: ${activity.type} L${activity.level}`, classId: classInfo.id }); }} className="text-xs font-semibold bg-blue-200 text-blue-800 px-3 py-1.5 rounded-md hover:bg-blue-300">현황</button>
+                                            <span className={`inline-block transition-transform ${openActivityIds.has(activity.id) ? 'rotate-180' : ''}`}>▼</span>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
+                                      {openActivityIds.has(activity.id) && (
+                                        <div className="mt-2 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner">
+                                          <div className="text-sm text-slate-700">
+                                            <div className="font-semibold mb-1">문항</div>
+                                            <div className="mb-2">{question.text}</div>
+                                            <div className="font-semibold mb-1">보기</div>
+                                            <ul className="list-disc pl-5 space-y-1">
+                                              {question.options.map((o) => (
+                                                <li key={o}>{o}</li>
+                                              ))}
+                                            </ul>
+                                            <div className="mt-2"><span className="font-semibold">정답:</span> {question.answer}</div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
                                   );
                                 }
                                 return null;
@@ -496,12 +543,40 @@ const ClassCard: React.FC<{
             {toastMessage}
             </div>
         }
+        {/* Curriculum Setup Modal */}
+        {isCurriculumModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col">
+              <header className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="font-bold text-slate-800">커리큘럼 관리 · {classInfo.name}</h3>
+                <button onClick={() => setIsCurriculumModalOpen(false)} className="p-1 rounded-full hover:bg-gray-200"><CloseIcon /></button>
+              </header>
+              <div className="flex-1 overflow-y-auto">
+                <CurriculumSetupPage classId={classInfo.id} onClose={() => setIsCurriculumModalOpen(false)} />
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Students Modal */}
+        {isStudentsModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col">
+              <header className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h3 className="font-bold text-slate-800">학생 관리 · {classInfo.name}</h3>
+                <button onClick={() => setIsStudentsModalOpen(false)} className="p-1 rounded-full hover:bg-gray-200"><CloseIcon /></button>
+              </header>
+              <div className="flex-1 overflow-y-auto">
+                <StudentsPage classId={classInfo.id} teacher={{...({} as any)}} onClose={() => setIsStudentsModalOpen(false)} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
 };
 
-const ClassesPage: React.FC<ClassesPageProps> = ({ teacher, onManageCurriculum, onManageStudents }) => {
+const ClassesPage: React.FC<ClassesPageProps> = ({ teacher }) => {
     const [classes, setClasses] = useState<ClassInfo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isAddingClass, setIsAddingClass] = useState(false);
@@ -552,8 +627,6 @@ const ClassesPage: React.FC<ClassesPageProps> = ({ teacher, onManageCurriculum, 
                            <ClassCard
                              key={c.id}
                              classInfo={c}
-                             onManageCurriculum={onManageCurriculum}
-                             onManageStudents={onManageStudents}
                              onClassUpdated={fetchClasses}
                            />
                         ))}

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import FooterNav from './components/FooterNav';
 import DesktopLayout from './components/DesktopLayout';
 import ClassPage from './pages/ClassPage';
@@ -15,17 +15,18 @@ import Header from './components/Header';
 import { ActiveTab, Quiz, User, ClassInfo, ReadingMaterial, Activity, VocabItem, ListeningMaterial } from './types';
 import SplashScreen from './components/SplashScreen';
 import { AppLogo } from './components/icons';
-import ListeningQuizView from './pages/ListeningQuizView';
-import ReadingActivityView from './pages/ReadingActivityView';
+const ListeningQuizView = lazy(() => import('./pages/ListeningQuizView'));
+const ReadingActivityView = lazy(() => import('./pages/ReadingActivityView'));
 import CurriculumSetupPage from './pages/CurriculumSetupPage';
 import MaterialsPage from './pages/MaterialsPage';
-import AdminPanelPage from './pages/AdminPanelPage';
-import TeacherLogsPage from './pages/TeacherLogsPage';
+const AdminPanelPage = lazy(() => import('./pages/AdminPanelPage'));
+const TeacherLogsPage = lazy(() => import('./pages/TeacherLogsPage'));
 import WordbookPage from './pages/WordbookPage';
 import VocabPreviewModal from './components/VocabPreviewModal';
 import { getVocabForActivity, getVocabQuiz, getListeningMaterial, getReadingMaterialForActivity } from './services/api';
-import VocabQuizView from './pages/VocabQuizView';
-import TeacherClassSessionPage from './pages/TeacherClassSessionPage';
+const VocabQuizView = lazy(() => import('./pages/VocabQuizView'));
+const TeacherClassSessionPage = lazy(() => import('./pages/TeacherClassSessionPage'));
+import LoadingOverlay from './components/LoadingOverlay';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -48,6 +49,7 @@ const App: React.FC = () => {
   // State for new unified vocab flow
   const [vocabToPreview, setVocabToPreview] = useState<VocabItem[] | null>(null);
   const [activityAfterPreview, setActivityAfterPreview] = useState<{ content: Quiz | ReadingMaterial | ListeningMaterial, classInfo?: ClassInfo } | null>(null);
+  const [isLoadingOverlay, setIsLoadingOverlay] = useState<{ show: boolean; message?: string; progress?: number }>({ show: false, message: '', progress: 0 });
   
   // Centralized tab navigation to close overlays like Admin Panel / Logs
   const navigateTab = (tab: ActiveTab) => {
@@ -73,35 +75,47 @@ const App: React.FC = () => {
 
   const handleStartActivity = async (activity: Activity, classInfo: ClassInfo) => {
     try {
+      setIsLoadingOverlay({ show: true, message: '학습 자료를 준비하고 있어요...', progress: 10 });
       const vocabItems = await getVocabForActivity(activity, classInfo.id);
+      setIsLoadingOverlay(prev => ({ ...prev, progress: 40 }));
 
       let mainContent: Quiz | ReadingMaterial | ListeningMaterial | null = null;
       if (activity.type === 'vocab') {
         mainContent = await getVocabQuiz(activity, classInfo.id);
+        setIsLoadingOverlay(prev => ({ ...prev, progress: 70 }));
       } else if (activity.type === 'listening') {
         mainContent = await getListeningMaterial(activity, classInfo.id);
+        setIsLoadingOverlay(prev => ({ ...prev, progress: 70 }));
       } else if (activity.type === 'reading') {
         mainContent = await getReadingMaterialForActivity(activity, classInfo.id);
+        setIsLoadingOverlay(prev => ({ ...prev, progress: 70 }));
       } else {
+        setIsLoadingOverlay({ show: false, message: '', progress: 0 });
         alert(`${activity.type} 활동은 아직 구현되지 않았습니다.`);
         return;
       }
 
       if (!mainContent) {
+        setIsLoadingOverlay({ show: false, message: '', progress: 0 });
         throw new Error("학습 콘텐츠를 불러올 수 없습니다.");
       }
 
       if (vocabItems && vocabItems.length > 0) {
         setActivityAfterPreview({ content: mainContent, classInfo });
         setVocabToPreview(vocabItems);
+        setIsLoadingOverlay(prev => ({ ...prev, progress: 100 }));
+        setTimeout(() => setIsLoadingOverlay({ show: false, message: '', progress: 0 }), 300);
       } else {
         // No vocab to preview, start activity directly
         if (mainContent.activityType === 'vocab') setVocabQuizContext({ quiz: mainContent as Quiz, classInfo });
         else if (mainContent.activityType === 'listening') setListeningActivityContext({ material: mainContent as ListeningMaterial, classInfo });
         else if (mainContent.activityType === 'reading') setReadingActivityContext({ material: mainContent as ReadingMaterial, classInfo });
+        setIsLoadingOverlay(prev => ({ ...prev, progress: 100 }));
+        setTimeout(() => setIsLoadingOverlay({ show: false, message: '', progress: 0 }), 300);
       }
     } catch (error) {
       console.error("Failed to start activity:", error);
+      setIsLoadingOverlay({ show: false, message: '', progress: 0 });
       alert("활동을 시작하는 중 오류가 발생했습니다. 다시 시도해 주세요.");
     }
   };
@@ -183,8 +197,6 @@ const App: React.FC = () => {
         return isTeacherOrAdmin ? (
           <ClassesPage
             teacher={currentUser}
-            onManageCurriculum={setEditingCurriculumForClassId}
-            onManageStudents={setViewingStudentsForClassId}
             onEnterClassSession={(classId, dayId) => setActiveClassSession({ classId, dayId })}
           />
         ) : null;
@@ -207,7 +219,7 @@ const App: React.FC = () => {
       default:
         if (role === 'student') return <ClassPage onStartActivity={handleStartActivity} currentUser={currentUser} />;
         if (role === 'individual') return <MaterialsPage currentUser={currentUser} onStartActivity={(payload, _classInfo) => handleStartMaterial(payload)} />;
-        if (isTeacherOrAdmin) return <ClassesPage teacher={currentUser} onManageCurriculum={setEditingCurriculumForClassId} onManageStudents={setViewingStudentsForClassId} />;
+        if (isTeacherOrAdmin) return <ClassesPage teacher={currentUser} />;
         if (role === 'master') return <MasterPage currentUser={currentUser} />;
         return null;
     }
@@ -221,21 +233,25 @@ const App: React.FC = () => {
       if (isWide) {
         return (
           <DesktopLayout currentUser={currentUser} activeTab={activeTab} setActiveTab={navigateTab} onLogout={handleLogout} onOpenAdminPanel={() => setShowAdminPanel(true)} onOpenTeacherLogs={() => setShowTeacherLogs(true)}>
-            <TeacherLogsPage currentUser={currentUser} onClose={() => setShowTeacherLogs(false)} />
+            <Suspense fallback={<div className="p-6">로딩 중...</div>}>
+              <TeacherLogsPage currentUser={currentUser} onClose={() => setShowTeacherLogs(false)} />
+            </Suspense>
           </DesktopLayout>
         );
       }
-      return <div className="app-frame"><TeacherLogsPage currentUser={currentUser} onClose={() => setShowTeacherLogs(false)} /></div>;
+      return <div className="app-frame"><Suspense fallback={<div className="p-6">로딩 중...</div>}><TeacherLogsPage currentUser={currentUser} onClose={() => setShowTeacherLogs(false)} /></Suspense></div>;
     }
     if (showAdminPanel && (role === 'admin' || role === 'master')) {
       if (isWide) {
         return (
           <DesktopLayout currentUser={currentUser} activeTab={activeTab} setActiveTab={navigateTab} onLogout={handleLogout} onOpenAdminPanel={() => setShowAdminPanel(true)} onOpenTeacherLogs={() => setShowTeacherLogs(true)}>
-            <AdminPanelPage currentUser={currentUser} onClose={handleAdminPanelClose} />
+            <Suspense fallback={<div className="p-6">로딩 중...</div>}>
+              <AdminPanelPage currentUser={currentUser} onClose={handleAdminPanelClose} />
+            </Suspense>
           </DesktopLayout>
         );
       }
-      return <div className="app-frame"><AdminPanelPage currentUser={currentUser} onClose={handleAdminPanelClose} /></div>;
+      return <div className="app-frame"><Suspense fallback={<div className="p-6">로딩 중...</div>}><AdminPanelPage currentUser={currentUser} onClose={handleAdminPanelClose} /></Suspense></div>;
     }
     if (showWordbook) {
       if (isWide) {
@@ -251,24 +267,55 @@ const App: React.FC = () => {
       if (isWide) {
         return (
           <DesktopLayout currentUser={currentUser} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout}>
-            <TeacherClassSessionPage currentUser={currentUser} classId={activeClassSession.classId} dayId={activeClassSession.dayId} onClose={() => setActiveClassSession(null)} />
+            <Suspense fallback={<div className="p-6">로딩 중...</div>}>
+              <TeacherClassSessionPage currentUser={currentUser} classId={activeClassSession.classId} dayId={activeClassSession.dayId} onClose={() => setActiveClassSession(null)} />
+            </Suspense>
           </DesktopLayout>
         );
       }
       return (
         <div className="app-frame">
-          <TeacherClassSessionPage currentUser={currentUser} classId={activeClassSession.classId} dayId={activeClassSession.dayId} onClose={() => setActiveClassSession(null)} />
+          <Suspense fallback={<div className="p-6">로딩 중...</div>}>
+            <TeacherClassSessionPage currentUser={currentUser} classId={activeClassSession.classId} dayId={activeClassSession.dayId} onClose={() => setActiveClassSession(null)} />
+          </Suspense>
         </div>
       );
     }
     if (vocabQuizContext) {
-      return <div className="app-frame"><VocabQuizView quiz={vocabQuizContext.quiz} classInfo={vocabQuizContext.classInfo} onFinish={() => setVocabQuizContext(null)} currentUser={currentUser} /></div>;
+      if (isWide) {
+        return (
+          <DesktopLayout currentUser={currentUser} activeTab={activeTab} setActiveTab={navigateTab} onLogout={handleLogout} onOpenAdminPanel={() => setShowAdminPanel(true)} onOpenTeacherLogs={() => setShowTeacherLogs(true)}>
+            <Suspense fallback={<div className="p-6">로딩 중...</div>}>
+              <VocabQuizView quiz={vocabQuizContext.quiz} classInfo={vocabQuizContext.classInfo} onFinish={() => setVocabQuizContext(null)} currentUser={currentUser} />
+            </Suspense>
+          </DesktopLayout>
+        );
+      }
+      return <div className="app-frame"><Suspense fallback={<div className="p-6">로딩 중...</div>}><VocabQuizView quiz={vocabQuizContext.quiz} classInfo={vocabQuizContext.classInfo} onFinish={() => setVocabQuizContext(null)} currentUser={currentUser} /></Suspense></div>;
     }
     if (listeningActivityContext) {
-      return <div className="app-frame"><ListeningQuizView material={listeningActivityContext.material} classInfo={listeningActivityContext.classInfo} onFinish={() => setListeningActivityContext(null)} currentUser={currentUser} /></div>;
+      if (isWide) {
+        return (
+          <DesktopLayout currentUser={currentUser} activeTab={activeTab} setActiveTab={navigateTab} onLogout={handleLogout} onOpenAdminPanel={() => setShowAdminPanel(true)} onOpenTeacherLogs={() => setShowTeacherLogs(true)}>
+            <Suspense fallback={<div className="p-6">로딩 중...</div>}>
+              <ListeningQuizView material={listeningActivityContext.material} classInfo={listeningActivityContext.classInfo} onFinish={() => setListeningActivityContext(null)} currentUser={currentUser} />
+            </Suspense>
+          </DesktopLayout>
+        );
+      }
+      return <div className="app-frame"><Suspense fallback={<div className="p-6">로딩 중...</div>}><ListeningQuizView material={listeningActivityContext.material} classInfo={listeningActivityContext.classInfo} onFinish={() => setListeningActivityContext(null)} currentUser={currentUser} /></Suspense></div>;
     }
     if (readingActivityContext) {
-      return <div className="app-frame"><ReadingActivityView material={readingActivityContext.material} classInfo={readingActivityContext.classInfo} onFinish={() => setReadingActivityContext(null)} currentUser={currentUser} /></div>;
+      if (isWide) {
+        return (
+          <DesktopLayout currentUser={currentUser} activeTab={activeTab} setActiveTab={navigateTab} onLogout={handleLogout} onOpenAdminPanel={() => setShowAdminPanel(true)} onOpenTeacherLogs={() => setShowTeacherLogs(true)}>
+            <Suspense fallback={<div className="p-6">로딩 중...</div>}>
+              <ReadingActivityView material={readingActivityContext.material} classInfo={readingActivityContext.classInfo} onFinish={() => setReadingActivityContext(null)} currentUser={currentUser} />
+            </Suspense>
+          </DesktopLayout>
+        );
+      }
+      return <div className="app-frame"><Suspense fallback={<div className="p-6">로딩 중...</div>}><ReadingActivityView material={readingActivityContext.material} classInfo={readingActivityContext.classInfo} onFinish={() => setReadingActivityContext(null)} currentUser={currentUser} /></Suspense></div>;
     }
     if (editingCurriculumForClassId) {
       if (isWide) {
@@ -297,6 +344,9 @@ const App: React.FC = () => {
     return (
       <DesktopLayout currentUser={currentUser} activeTab={activeTab} setActiveTab={navigateTab} onLogout={handleLogout} onOpenAdminPanel={() => setShowAdminPanel(true)} onOpenTeacherLogs={() => setShowTeacherLogs(true)}>
         <>
+          {isLoadingOverlay.show && (
+            <LoadingOverlay message={isLoadingOverlay.message} progress={isLoadingOverlay.progress} />
+          )}
           {vocabToPreview && (
             <VocabPreviewModal
               vocabItems={vocabToPreview}
@@ -325,31 +375,49 @@ const App: React.FC = () => {
 
   // Mobile-shell for narrow screens and Auth screens
   return (
-    <div className="flex justify-center items-start min-h-screen bg-sky-100">
-      <div className="relative w-[390px] h-[844px] bg-white flex flex-col justify-between shadow-2xl overflow-hidden">
+    <div className="flex justify-center items-start h-screen bg-sky-100">
+      <div className="relative w-full max-w-[1024px] min-w-[320px] h-screen bg-white flex flex-col justify-between shadow-2xl overflow-hidden">
         {vocabToPreview && <VocabPreviewModal vocabItems={vocabToPreview} onClose={() => setVocabToPreview(null)} onStart={handleFinishVocabPreview} />}
+        {isLoadingOverlay.show && (
+          <LoadingOverlay message={isLoadingOverlay.message} progress={isLoadingOverlay.progress} />
+        )}
         {showSplash ? <SplashScreen /> : (
           <>
-            <div className="absolute inset-0 flex justify-center items-center z-0 pointer-events-none">
-              <AppLogo className="w-2/3 h-2/3 text-blue-100" />
-            </div>
+            {currentUser && (
+              <div className="absolute inset-0 flex justify-center items-center z-0 pointer-events-none">
+                <AppLogo className="w-2/3 h-2/3 text-blue-100" />
+              </div>
+            )}
             {currentUser ? (
                 <>
                   <Header activeTab={activeTab} currentUser={currentUser} onNavigateToAdminPanel={() => setShowAdminPanel(true)} onNavigateToTeacherLogs={() => setShowTeacherLogs(true)} />
-                  <div className="relative z-10 flex-grow overflow-y-auto bg-transparent">
+                  <div className="relative z-10 flex-grow min-h-0 overflow-y-auto bg-transparent">
                     {renderContent()}
                   </div>
-                  <FooterNav activeTab={activeTab} setActiveTab={setActiveTab} role={currentUser.role} />
+                  <div className="relative z-10 border-t border-gray-200 bg-white">
+                    <FooterNav activeTab={activeTab} setActiveTab={setActiveTab} role={currentUser.role} />
+                  </div>
                 </>
             ) : (
-              <div className="relative z-10 h-full">
-                {authPage === 'login' ? <LoginPage onLoginSuccess={handleLoginSuccess} onNavigateToSignup={() => setAuthPage('signup')} /> : <SignupPage onNavigateToLogin={() => setAuthPage('login')} />}
+              <div className="relative z-10 h-full flex items-center justify-center p-6">
+                <div className="relative w-full min-w-[24rem] max-w-[40rem] bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+                  <div className="absolute inset-0 flex justify-center items-center z-0 pointer-events-none">
+                    <AppLogo className="w-2/3 h-2/3 text-blue-100" />
+                  </div>
+                  <div className="relative z-10">
+                    {authPage === 'login' ? (
+                      <LoginPage onLoginSuccess={handleLoginSuccess} onNavigateToSignup={() => setAuthPage('signup')} />
+                    ) : (
+                      <SignupPage onNavigateToLogin={() => setAuthPage('login')} />
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </>
         )}
       </div>
-      <style>{`.app-frame { display: flex; justify-content: center; align-items: start; min-height: 100vh; background-color: #f0f9ff; } .app-frame > div { position: relative; width: 390px; height: 844px; background-color: white; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); overflow: hidden; }`}</style>
+      <style>{`.app-frame { display: flex; justify-content: center; align-items: start; height: 100vh; background-color: #f0f9ff; } .app-frame > div { position: relative; width: 100vw; max-width: 1024px; min-width: 320px; height: 100vh; background-color: white; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); overflow: hidden; }`}</style>
     </div>
   );
 };
