@@ -23,14 +23,22 @@
   --color-gray-800: #1f2937;
 
   --color-slate-600: #475569;
+  --color-slate-100: #f1f5f9;
   --color-slate-700: #334155;
   --color-slate-800: #1e293b;
 
+  --color-blue-50: #eff6ff;
   --color-blue-100: #dbeafe;
   --color-blue-200: #bfdbfe;
   --color-blue-500: #3b82f6;
   --color-blue-600: #2563eb;
   --color-blue-700: #1d4ed8;
+
+  --color-green-50: #ecfdf5;
+  --color-green-400: #34d399;
+  --color-red-50: #fef2f2;
+  --color-red-400: #f87171;
+  --color-yellow-400: #facc15;
 
   /* Spacing scale (for p-4, m-4, gap-2, w-5, h-5, etc.) */
   --spacing-0: 0px;
