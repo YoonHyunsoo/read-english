@@ -26,6 +26,53 @@
   --color-blue-100: #dbeafe;
   --color-blue-600: #2563eb;
   --color-blue-700: #1d4ed8;
+
+  /* Spacing scale (for p-4, m-4, gap-2, w-5, h-5, etc.) */
+  --spacing-0: 0px;
+  --spacing-px: 1px;
+  --spacing-0\.5: 0.125rem; /* 2px */
+  --spacing-1: 0.25rem;     /* 4px */
+  --spacing-1\.5: 0.375rem; /* 6px */
+  --spacing-2: 0.5rem;      /* 8px */
+  --spacing-2\.5: 0.625rem; /* 10px */
+  --spacing-3: 0.75rem;     /* 12px */
+  --spacing-3\.5: 0.875rem; /* 14px */
+  --spacing-4: 1rem;        /* 16px */
+  --spacing-5: 1.25rem;     /* 20px */
+  --spacing-6: 1.5rem;      /* 24px */
+  --spacing-8: 2rem;        /* 32px */
+  --spacing-10: 2.5rem;     /* 40px */
+  --spacing-12: 3rem;       /* 48px */
+  --spacing-16: 4rem;       /* 64px */
+  --spacing-20: 5rem;       /* 80px */
+
+  /* Border radius scale (for rounded-lg, rounded-xl, etc.) */
+  --radius-none: 0px;
+  --radius-sm: 0.125rem;
+  --radius: 0.25rem;        /* default */
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* Font sizes (for text-sm, text-base, text-lg, text-xl, text-2xl) */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+
+  /* Shadows (for shadow-sm, shadow, shadow-md, shadow-lg, shadow-xl, shadow-2xl, shadow-inner) */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
 }
 
 @tailwind base;
