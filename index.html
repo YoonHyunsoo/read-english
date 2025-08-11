@@ -4,14 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>클래스 활동 플래너</title>
-    <!-- Tailwind CDN: load only in development to avoid runtime overhead in production -->
-    <script type="module">
-      if (import.meta.env && import.meta.env.DEV) {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.tailwindcss.com';
-        document.head.appendChild(s);
-      }
-    </script>
+    <!-- Tailwind CSS will be included via build process -->
     <!-- App favicon (inline SVG to avoid 404 on /favicon.ico) -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%230ea5e9'/%3E%3Cpath d='M12 6v12M6 12h12' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -57,18 +50,7 @@
           animation: scaleUp 0.2s ease-out forwards;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.1.0/",
-    "react": "https://esm.sh/react@^19.1.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
-    "@google/genai": "https://esm.sh/@google/genai",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
+
 </head>
   <body>
     <div id="root"></div>
