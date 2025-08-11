@@ -1,3 +1,10 @@
+/* Tailwind v4: explicitly declare source files for class scanning */
+@source "./index.html";
+@source "./index.tsx";
+@source "./App.tsx";
+@source "./components/**/*.{ts,tsx}";
+@source "./pages/**/*.{ts,tsx}";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
